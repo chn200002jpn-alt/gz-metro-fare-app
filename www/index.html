@@ -151,7 +151,7 @@
     transition: transform .28s ease;
     z-index:650;
     box-shadow:0 -4px 20px rgba(0,0,0,.15);
-    padding:16px 16px 36px;
+    padding:16px 16px 0px;
     /* 磨砂半透明 */
     background: rgba(255,255,255,0.82);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
@@ -171,11 +171,17 @@
   }
   #drawerMask.show { display:block; }
 
+  /* 面板收起时不吃触摸 */
+  #panel:not(.open) { pointer-events: none; }
+  /* 遮罩只有显示时才吃触摸 */
+  #drawerMask { pointer-events: none; }
+  #drawerMask.show { pointer-events: auto; }
+
   /* 顶部常驻提示（避开状态栏） */
   #topHint {
     position:fixed; left:0; right:0; top:0;
-    /* 状态栏高度 + 额外 12px 安全距离 */
-    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+    /* 用较大固定值兜底，因为 APK WebView 里 env() 常常返回 0 */
+    padding-top: 84px;
     z-index:700;
     pointer-events:none;
   }
@@ -664,6 +670,33 @@ async function boot() {
     return Math.hypot(dx, dy);
   }
 
+  stage.addEventListener('touchstart', e => {
+    stopTInertia();
+    moved = false;
+    if (e.touches.length === 1) {
+      touchMode = 'pan';
+      panStartX = e.touches[0].clientX;
+      panStartY = e.touches[0].clientY;
+      panStartScrollL = stage.scrollLeft;
+      panStartScrollT = stage.scrollTop;
+      tLastX = e.touches[0].clientX;
+      tLastY = e.touches[0].clientY;
+      tLastT = performance.now();
+      tVelX = 0; tVelY = 0;
+    } else if (e.touches.length >= 2) {
+      touchMode = 'pinch';
+      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+      pinchStartZoom = zoom;
+      const rect = stage.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      pinchViewX = cx - rect.left;
+      pinchViewY = cy - rect.top;
+      pinchContentX = (stage.scrollLeft + pinchViewX) / zoom;
+      pinchContentY = (stage.scrollTop  + pinchViewY) / zoom;
+    }
+  }, { passive: false });
+
   stage.addEventListener('touchmove', e => {
     e.preventDefault();
     moved = true;
@@ -682,7 +715,7 @@ async function boot() {
         tLastY = e.touches[0].clientY;
         tLastT = now;
       }
-    } else if (touchMode === 'pinch' && e.touches.length === 2) {
+    } else if (touchMode === 'pinch' && e.touches.length >= 2) {
       const d = touchDist(e.touches[0], e.touches[1]);
       const newZoom = Math.max(0.05, Math.min(5, pinchStartZoom * (d / pinchStartDist)));
       zoom = newZoom;
