@@ -541,6 +541,13 @@ async function boot() {
       selectStation(c.name);
       if (window.innerWidth <= 768) closeDrawer();
     });
+    d.addEventListener('touchend', (ev) => {
+      // 用同一个 moved 标志：拖动过就不选，纯点击才选
+      if (moved) return;
+      ev.stopPropagation();
+      selectStation(c.name);
+      if (window.innerWidth <= 768) closeDrawer();
+    });
     canvas.appendChild(d);
     dotEls[c.name] = { el: d, price: p };
   });
@@ -729,9 +736,11 @@ async function boot() {
   stage.addEventListener('touchend', e => {
     if (e.touches.length === 0) {
       touchMode = null;
-      if (moved) {
+        if (moved) {
         const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
         stage.addEventListener('click', block, { capture: true, once: true });
+        // 本次触摸算拖动，立刻复位，避免影响下一次点击
+        moved = false;
         // 启动惯性
         if (Math.abs(tVelX) > 1 || Math.abs(tVelY) > 1) {
           tRaf = requestAnimationFrame(tInertiaLoop);
