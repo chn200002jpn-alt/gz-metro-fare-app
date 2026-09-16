@@ -103,23 +103,29 @@
   #drawerMask   { display:none; }
 
   @media (max-width: 768px) {
-    /* 底部把手条 */
+    /* 右下角浮动圆形按钮 */
     #drawerHandle {
-      display:flex; flex-direction:column; align-items:center;
-      position:fixed; left:0; right:0; bottom:0;
-      height:36px; background:#fff;
-      border-top:1px solid #e0e3e8;
-      box-shadow:0 -2px 8px rgba(0,0,0,.08);
-      z-index:500; cursor:pointer;
-      justify-content:center;
+      display:flex; flex-direction:row; align-items:center; justify-content:center;
+      position:fixed; right:16px; bottom:20px;
+      padding:8px 16px;
+      min-width:64px;
+      background:#1a73e8; color:#fff;
+      border-radius:999px;   /* 胶囊形 */
+      box-shadow:0 4px 12px rgba(0,0,0,.25);
+      z-index:700; cursor:pointer;
+      transition: transform .2s;
+      gap:6px;
     }
-    #drawerHandle .bar {
-      width:40px; height:4px; border-radius:2px;
-      background:#c0c4cc; margin-top:4px;
+    #drawerHandle:active { transform:scale(0.92); }
+    #drawerHandle .bar { display:none; }
+    #drawerHandle .arrow {
+      font-size:16px; line-height:1; font-weight:bold;
     }
-    #drawerHandle .label {
-      font-size:12px; color:#666; margin-top:2px;
+    #drawerHandle .text {
+      font-size:12px; line-height:1;
     }
+    /* 面板变底部抽屉 */
+    ... （下面不动）
 
     /* 面板变底部抽屉 */
     #panel {
@@ -159,8 +165,8 @@
 
 <!-- 底部把手（手机才显示） -->
 <div id="drawerHandle">
-  <div class="bar"></div>
-  <div class="label">菜单</div>
+  <div class="arrow">▲</div>
+  <div class="text">菜单</div>
 </div>
 
 <!-- 抽屉遮罩（手机才显示） -->
@@ -536,11 +542,17 @@ async function boot() {
     zoom = Math.min(sw / W, sh / H);
   }
   function applyZoom() {
-    bg.style.width  = W + 'px';
-    bg.style.height = H + 'px';
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
-    canvas.style.transform = `scale(${zoom})`;
+    bg.style.width   = (W * zoom) + 'px';
+    bg.style.height  = (H * zoom) + 'px';
+    canvas.style.width  = (W * zoom) + 'px';
+    canvas.style.height = (H * zoom) + 'px';
+    coords.forEach(c => {
+      const el = dotEls[c.name].el;
+      el.style.left = (c.x * zoom) + 'px';
+      el.style.top  = (c.y * zoom) + 'px';
+      el.style.transform = `scale(${zoom})`;
+      el.style.transformOrigin = 'center';
+    });
   }
 
   fitToScreen();
