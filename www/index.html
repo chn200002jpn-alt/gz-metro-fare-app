@@ -14,16 +14,20 @@
     cursor:default;
     touch-action: none;
   }
-  #canvas { position:relative; }
+  #canvas {
+    position:relative;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
    #bg { display:block; user-select:none; -webkit-user-drag:none; opacity:0.6; }
 
   .station {
     position:absolute; width:70px; height:50px; margin:-25px 0 0 -35px;
     border-radius:999px; background:#fff; border:1.5px solid #9aa0a6;
-    cursor:pointer; transition:transform .08s;
+    cursor:pointer;
     display:flex; align-items:center; justify-content:center;
   }
-  .station:hover { transform:scale(1.5); z-index:100; border-color:#1a73e8; }
+  .station:hover { transform:scale(1.5); transition:transform .08s; z-index:100; border-color:#1a73e8; }
   .station.selected { background:#d93025; border-color:#d93025; z-index:99; }
 
   /* 有票价时，圆里显示数字 */
@@ -34,12 +38,10 @@
   .station .price {
     font-size:40px; color:#fff; font-weight:bold; line-height:1;
     pointer-events:none; display:none;
-    text-shadow:0 0 2px rgba(0,0,0,.3);
   }
   .station.has-fare .price { display:block; }
   .station.selected .price { display:block; color:#fff; }
 
- .station .name { display:none; }
 
   /* 右侧信息面板 */
   #panel {
@@ -84,13 +86,67 @@
   .station.fare-5 { background:#E56B1E; border-color:#E56B1E; }
   .station.fare-6 { background:#E03030; border-color:#E03030; }
   .station.fare-7 { background:#8B0000; border-color:#8B0000; }
-  /* 起点改用金色 */
-  .station.selected { background:#F2C230 !important; border-color:#F2C230 !important; }
+
+  /* 起点：默认红色、放大（与普通站点不同） */
   .station.selected {
+    background:#d93025; border-color:#d93025; z-index:99;
     width:84px !important; height:60px !important;
     margin:-30px 0 0 -42px !important;
   }
-  .station.fare-start { background:#F2C230; border-color:#F2C230; }
+  /* 勾选分色后，起点才变金色 */
+  .station.selected.fare-start {
+    background:#F2C230 !important; border-color:#F2C230 !important;
+  }
+
+  /* ===== 手机：底部上滑抽屉 ===== */
+  #drawerHandle { display:none; }
+  #drawerMask   { display:none; }
+
+  @media (max-width: 768px) {
+    /* 底部把手条 */
+    #drawerHandle {
+      display:flex; flex-direction:column; align-items:center;
+      position:fixed; left:0; right:0; bottom:0;
+      height:36px; background:#fff;
+      border-top:1px solid #e0e3e8;
+      box-shadow:0 -2px 8px rgba(0,0,0,.08);
+      z-index:500; cursor:pointer;
+      justify-content:center;
+    }
+    #drawerHandle .bar {
+      width:40px; height:4px; border-radius:2px;
+      background:#c0c4cc; margin-top:4px;
+    }
+    #drawerHandle .label {
+      font-size:12px; color:#666; margin-top:2px;
+    }
+
+    /* 面板变底部抽屉 */
+    #panel {
+      position:fixed; left:0; right:0; bottom:0;
+      width:100%; max-width:100%;
+      height:60vh;
+      border-left:none; border-top:1px solid #d0d4da;
+      border-radius:16px 16px 0 0;
+      transform: translateY(100%);
+      transition: transform .28s ease;
+      z-index:650;
+      box-shadow:0 -4px 20px rgba(0,0,0,.15);
+      padding-bottom:48px;   /* 给把手条留位置 */
+    }
+    #panel.open {
+      transform: translateY(0);
+    }
+
+    /* 遮罩 */
+    #drawerMask {
+      display:none;
+      position:fixed; inset:0; z-index:550;
+      background:rgba(0,0,0,.25);
+    }
+    #drawerMask.show { display:block; }
+  }
+
 </style>
 </head>
 <body>
@@ -100,6 +156,15 @@
     <img id="bg" alt="">
   </div>
 </div>
+
+<!-- 底部把手（手机才显示） -->
+<div id="drawerHandle">
+  <div class="bar"></div>
+  <div class="label">菜单</div>
+</div>
+
+<!-- 抽屉遮罩（手机才显示） -->
+<div id="drawerMask"></div>
 
 <div id="panel">
   <h2>广州地铁票价查询</h2>
@@ -202,8 +267,7 @@ async function boot() {
   stations.forEach((n, i) => idxOf[n] = i);
 
   // coords.json 是数组，转成 {name: {x,y}}
-  const coordOf = {};
-coords.forEach(c => { coordOf[c.name] = c; });
+
   // ============ 线路选择大面板 ============
   const picker       = document.getElementById('picker');
   const pickerClose  = document.getElementById('pickerClose');
@@ -452,7 +516,10 @@ coords.forEach(c => { coordOf[c.name] = c; });
     n.textContent = c.name;
     d.appendChild(n);
 
-    d.addEventListener('click', () => selectStation(c.name));
+    d.addEventListener('click', () => {
+      selectStation(c.name);
+      if (window.innerWidth <= 768) closeDrawer();
+    });
     canvas.appendChild(d);
     dotEls[c.name] = { el: d, price: p };
   });
@@ -469,18 +536,11 @@ coords.forEach(c => { coordOf[c.name] = c; });
     zoom = Math.min(sw / W, sh / H);
   }
   function applyZoom() {
-    bg.style.width   = (W * zoom) + 'px';
-    bg.style.height  = (H * zoom) + 'px';
-    canvas.style.width  = (W * zoom) + 'px';
-    canvas.style.height = (H * zoom) + 'px';
-    // 站点位置跟着 zoom 走
-    coords.forEach(c => {
-      const el = dotEls[c.name].el;
-      el.style.left = (c.x * zoom) + 'px';
-      el.style.top  = (c.y * zoom) + 'px';
-      el.style.transform = `scale(${zoom})`;   // 圆本身也放大
-      el.style.transformOrigin = 'center';
-    });
+    bg.style.width  = W + 'px';
+    bg.style.height = H + 'px';
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    canvas.style.transform = `scale(${zoom})`;
   }
 
   fitToScreen();
@@ -601,13 +661,13 @@ coords.forEach(c => { coordOf[c.name] = c; });
 
   // ===== 票价分色配置 =====
   const FARE_LEVELS = [
-    { max: 2, cls: 'fare-1', color: '#4FA8E0', label: '2' },
-    { max: 3, cls: 'fare-2', color: '#3E8FD8', label: '3' },
-    { max: 4, cls: 'fare-3', color: '#5B7AC9', label: '4' },
-    { max: 5, cls: 'fare-4', color: '#8466C4', label: '5' },
-    { max: 6, cls: 'fare-5', color: '#B85AA8', label: '6' },
-    { max: 7, cls: 'fare-6', color: '#E08040', label: '7' },
-    { max: Infinity, cls: 'fare-7', color: '#D94040', label: '8+' },
+    { max: 2, cls: 'fare-1', color: '#00A6D6', label: '2' },
+    { max: 3, cls: 'fare-2', color: '#3B6FD9', label: '3' },
+    { max: 4, cls: 'fare-3', color: '#7B52C7', label: '4' },
+    { max: 5, cls: 'fare-4', color: '#C0348C', label: '5' },
+    { max: 6, cls: 'fare-5', color: '#E56B1E', label: '6' },
+    { max: 7, cls: 'fare-6', color: '#E03030', label: '7' },
+    { max: Infinity, cls: 'fare-7', color: '#8B0000', label: '8+' },
   ];
   function fareLevel(f) {
     for (const lv of FARE_LEVELS) if (f <= lv.max) return lv;
@@ -628,15 +688,11 @@ coords.forEach(c => { coordOf[c.name] = c; });
   }
   colorToggle.addEventListener('change', () => {
     fareLegend.style.display = colorToggle.checked ? 'block' : 'none';
-    const bg = document.getElementById('bg');
+    const bgEl = document.getElementById('bg');
     if (colorToggle.checked) {
-      // 勾选：底图去色 + 压暗一点，让彩色圆突出
-      bg.style.filter = 'grayscale(1) brightness(0.98)';
-      bg.style.opacity = '0.5';
+      bgEl.style.opacity = '0.5';
     } else {
-      // 取消：恢复原样
-      bg.style.filter = '';
-      bg.style.opacity = '';
+      bgEl.style.opacity = '';
     }
     if (selected) selectStation(selected);
   });
@@ -744,6 +800,26 @@ coords.forEach(c => { coordOf[c.name] = c; });
   // ===== 初始：自动选第一个站，让用户看到效果 =====
   // （不自动选也行，把下面两行注释掉）
   // if (stations.length) selectStation(stations[0]);
+
+  // ===== 手机底部抽屉 =====
+  const panelEl      = document.getElementById('panel');
+  const drawerHandle = document.getElementById('drawerHandle');
+  const drawerMask   = document.getElementById('drawerMask');
+
+  function openDrawer() {
+    panelEl.classList.add('open');
+    drawerMask.classList.add('show');
+  }
+  function closeDrawer() {
+    panelEl.classList.remove('open');
+    drawerMask.classList.remove('show');
+  }
+
+  drawerHandle.addEventListener('click', () => {
+    if (panelEl.classList.contains('open')) closeDrawer();
+    else openDrawer();
+  });
+  drawerMask.addEventListener('click', closeDrawer);
 }
 
 boot().catch(err => {
