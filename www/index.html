@@ -13,22 +13,39 @@
     background:#eef0f3;
     cursor:default;
     touch-action: none;
+    -webkit-overflow-scrolling: touch;
   }
   #canvas {
     position:relative;
     transform-origin: 0 0;
     will-change: transform;
   }
-   #bg { display:block; user-select:none; -webkit-user-drag:none; opacity:0.6; }
+  #bg { display:block; user-select:none; -webkit-user-drag:none; opacity:0.6; }
 
   .station {
     position:absolute; width:70px; height:50px; margin:-25px 0 0 -35px;
     border-radius:999px; background:#fff; border:1.5px solid #9aa0a6;
     cursor:pointer;
     display:flex; align-items:center; justify-content:center;
+    -webkit-tap-highlight-color: transparent;
   }
   .station:hover { transform:scale(1.5); transition:transform .08s; z-index:100; border-color:#1a73e8; }
   .station.selected { background:#d93025; border-color:#d93025; z-index:99; }
+
+  /* 站名默认隐藏，仅在 hover / 选中 / 有票价时显示 */
+  .station .name {
+    display:none;
+    position:absolute;
+    top:100%; left:50%; transform:translateX(-50%);
+    margin-top:4px;
+    font-size:11px; color:#333; white-space:nowrap;
+    background:rgba(255,255,255,.9);
+    padding:1px 4px; border-radius:3px;
+    pointer-events:none;
+  }
+  .station:hover .name,
+  .station.selected .name,
+  .station.has-fare .name { display:block; }
 
   /* 有票价时，圆里显示数字 */
   .station.has-fare {
@@ -42,8 +59,7 @@
   .station.has-fare .price { display:block; }
   .station.selected .price { display:block; color:#fff; }
 
-
-  /* 右侧信息面板 */
+  /* 右侧信息面板（桌面端） */
   #panel h2 { margin:0 0 4px; font-size:16px; }
   #panel .sub { font-size:12px; color:#888; margin-bottom:16px; }
   #panel .from-info {
@@ -83,20 +99,17 @@
   .station.fare-6 { background:#E03030; border-color:#E03030; }
   .station.fare-7 { background:#8B0000; border-color:#8B0000; }
 
-  /* 起点：默认红色、放大（与普通站点不同） */
+  /* 起点：默认红色、放大 */
   .station.selected {
     background:#d93025; border-color:#d93025; z-index:99;
     width:84px !important; height:60px !important;
     margin:-30px 0 0 -42px !important;
   }
-  /* 勾选分色后，起点才变金色 */
   .station.selected.fare-start {
     background:#F2C230 !important; border-color:#F2C230 !important;
   }
 
-  /* ===== 手机版底部抽屉（全局生效） ===== */
-
-  /* 右下角浮动胶囊按钮 */
+  /* ===== 浮动胶囊按钮 ===== */
   #drawerHandle {
     display:flex; flex-direction:row; align-items:center; justify-content:center;
     position:fixed; right:16px; bottom:20px;
@@ -109,11 +122,24 @@
     transition: transform .2s;
     gap:6px;
     user-select:none;
+    -webkit-tap-highlight-color: transparent;
   }
   #drawerHandle:active { transform:scale(0.92); }
-  #drawerHandle .bar { display:none; }
   #drawerHandle .arrow { font-size:16px; line-height:1; font-weight:bold; }
   #drawerHandle .text  { font-size:12px; line-height:1; }
+
+  /* 常驻提示语（在胶囊按钮左侧） */
+  #globalHint {
+    position:fixed; right:96px; bottom:26px;
+    z-index:699;
+    background:rgba(255,255,255,.9);
+    color:#333; font-size:12px; line-height:1.2;
+    padding:6px 10px; border-radius:999px;
+    box-shadow:0 2px 8px rgba(0,0,0,.12);
+    max-width:60vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    pointer-events:none;
+  }
+  @media (min-width:769px) { #globalHint { display:none; } }
 
   /* 右侧面板 → 底部抽屉 */
   #panel {
@@ -126,7 +152,15 @@
     transition: transform .28s ease;
     z-index:650;
     box-shadow:0 -4px 20px rgba(0,0,0,.15);
-    padding-bottom:48px;
+    padding:16px 16px 48px;
+    /* 磨砂半透明 */
+    background: rgba(255,255,255,0.82);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+  }
+  /* 不支持 backdrop-filter 时退回白色 */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    #panel { background: #fff; }
   }
   #panel.open { transform: translateY(0); }
 
@@ -137,7 +171,6 @@
     background:rgba(0,0,0,.25);
   }
   #drawerMask.show { display:block; }
-
 </style>
 </head>
 <body>
@@ -148,20 +181,23 @@
   </div>
 </div>
 
-<!-- 底部把手（手机才显示） -->
+<!-- 常驻提示语 -->
+<div id="globalHint">点击站点，显示到全网各站票价</div>
+
+<!-- 底部把手 -->
 <div id="drawerHandle">
   <div class="arrow">▲</div>
   <div class="text">菜单</div>
 </div>
 
-<!-- 抽屉遮罩（手机才显示） -->
+<!-- 抽屉遮罩 -->
 <div id="drawerMask"></div>
 
 <div id="panel">
   <h2>广州地铁线网票价查询</h2>
-  <div class="sub">点击站点，显示到全网各站票价</div>
+  <div class="sub">点击图上站点，或下方按钮选择站点</div>
 
-<button id="openPicker" style="
+  <button id="openPicker" style="
     width:100%; padding:12px; border:0; border-radius:6px;
     background:#d93025; color:#fff; font-size:15px; cursor:pointer;
     margin-bottom:12px; font-weight:bold;
@@ -198,7 +234,6 @@
   </div>
 </div>
 
-
 <!-- 线路选择大面板 -->
 <div id="picker" style="
   position:fixed; inset:0; background:#f5f6f8; z-index:2000;
@@ -206,7 +241,6 @@
   padding-top: env(safe-area-inset-top);
   padding-bottom: calc(48px + env(safe-area-inset-bottom));
 ">
-  <!-- 顶部栏 -->
   <div style="
     display:flex; align-items:center; padding:12px 16px; background:#fff;
     border-bottom:1px solid #e0e3e8; gap:12px;
@@ -218,7 +252,6 @@
     ">×</button>
   </div>
 
-  <!-- 搜索 -->
   <div style="padding:12px 16px; background:#fff; border-bottom:1px solid #e0e3e8;">
     <input id="pickerSearch" type="text" placeholder="请输入站点名称"
       style="
@@ -227,14 +260,11 @@
       ">
   </div>
 
-  <!-- 双栏主体 -->
   <div style="flex:1; display:flex; overflow:hidden;">
-    <!-- 左栏：线路 -->
     <div id="lineCol" style="
       width:180px; background:#f5f6f8; overflow-y:auto;
       border-right:1px solid #e0e3e8;
     "></div>
-    <!-- 右栏：站点 -->
     <div id="stationCol" style="
       flex:1; background:#fff; overflow-y:auto;
     "></div>
@@ -243,7 +273,6 @@
 
 <script>
 async function boot() {
-  // ===== 载入数据 =====
   const [stations, lines, coords] = await Promise.all([
     fetch('stations.json').then(r => r.json()),
     fetch('station_lines2.json').then(r => r.json()),
@@ -259,8 +288,6 @@ async function boot() {
   const idxOf = {};
   stations.forEach((n, i) => idxOf[n] = i);
 
-  // coords.json 是数组，转成 {name: {x,y}}
-
   // ============ 线路选择大面板 ============
   const picker       = document.getElementById('picker');
   const pickerClose  = document.getElementById('pickerClose');
@@ -268,8 +295,7 @@ async function boot() {
   const lineCol      = document.getElementById('lineCol');
   const stationCol   = document.getElementById('stationCol');
 
-  // 从 stations 顺序 + lines 映射，推出 {线路: [站...]} 保持原 Excel 顺序
-    const lineToStations = {};
+  const lineToStations = {};
   const lineOrder = [];
   stations.forEach(s => {
     const lns = lines[s];
@@ -283,7 +309,6 @@ async function boot() {
     });
   });
 
-   // 线路显示顺序（左栏从上到下）
   const LINE_ORDER_PREFERRED = [
     '一号线', '二号线', '三号线', '四号线', '五号线',
     '六号线', '七号线', '八号线', '九号线', '十号线',
@@ -297,7 +322,6 @@ async function boot() {
   LINE_ORDER_PREFERRED.forEach((ln, i) => orderMap[ln] = i);
   lineOrder.sort((a, b) => (orderMap[a] ?? 9999) - (orderMap[b] ?? 9999));
 
-  // 每条线的站点顺序（人工指定）
   const LINE_STATIONS_ORDER = {
     '一号线': ['西塱','坑口','花地湾','芳村','黄沙','长寿路','陈家祠','西门口','公园前','农讲所','烈士陵园','东山口','杨箕','体育西路','体育中心','广州东站'],
     '二号线': ['广州南站','石壁','会江','南浦','洛溪','南洲','东晓南','江泰路','昌岗','江南西','市二宫','海珠广场','公园前','纪念堂','越秀公园','广州火车站','三元里','飞翔公园','白云公园','白云文化广场','萧岗','江夏','黄边','嘉禾望岗'],
@@ -328,14 +352,13 @@ async function boot() {
     const want = LINE_STATIONS_ORDER[ln];
     const have = lineToStations[ln] || [];
     const haveSet = new Set(have);
-    const newList = want.filter(s => haveSet.has(s));   // 只保留实际存在的
-    have.forEach(s => {                                  // 补上没列的
+    const newList = want.filter(s => haveSet.has(s));
+    have.forEach(s => {
       if (!newList.includes(s)) newList.push(s);
     });
     lineToStations[ln] = newList;
   });
 
-  // 线路配色（取常见线路的主色，简单映射）
   const LINE_COLORS = {
     '一号线': '#edcf3b', '二号线': '#00679e', '三号线': '#e89e47',
     '四号线': '#01824a', '五号线': '#c70541', '六号线': '#6e0346',
@@ -407,7 +430,6 @@ async function boot() {
         "></span>
       `;
       item.onclick = () => {
-        // 选中该站：关闭面板，跳过去
         selectStation(s);
         closePicker();
       };
@@ -418,8 +440,7 @@ async function boot() {
   function openPicker() {
     picker.style.display = 'flex';
     pickerSearch.value = '';
-    // 默认选中当前起点所在线路，或第一条
-        if (selected && lines[selected] && lines[selected].length) {
+    if (selected && lines[selected] && lines[selected].length) {
       currentLine = lines[selected][0];
     } else if (!currentLine) {
       currentLine = lineOrder[0];
@@ -434,14 +455,12 @@ async function boot() {
   pickerClose.onclick = closePicker;
   document.getElementById('openPicker').onclick = openPicker;
 
-  // 搜索：输入时右侧显示匹配站（跨线路）
   pickerSearch.addEventListener('input', () => {
     const q = pickerSearch.value.trim();
     if (!q) {
       renderStationCol();
       return;
     }
-    // 全局搜索
     stationCol.innerHTML = '';
     const hits = stations.filter(s => s.includes(q)).slice(0, 50);
     if (!hits.length) {
@@ -470,11 +489,9 @@ async function boot() {
     });
   });
 
-  // Esc 关闭
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && picker.style.display === 'flex') closePicker();
   });
-  
 
   // ===== 底图 =====
   const bg = document.getElementById('bg');
@@ -484,15 +501,14 @@ async function boot() {
   await new Promise(resolve => {
     bg.onload = resolve;
     bg.onerror = () => {
-      alert('底图 map.png 加载失败，请确认它在同一文件夹且文件名正确');
+      alert('底图 map.jpg 加载失败，请确认它在同一文件夹且文件名正确');
       resolve();
     };
     bg.src = 'map.jpg';
   });
 
-
   // ===== 画站点 =====
-  const dotEls = {};   // name -> element
+  const dotEls = {};
   coords.forEach(c => {
     const d = document.createElement('div');
     d.className = 'station';
@@ -509,7 +525,8 @@ async function boot() {
     n.textContent = c.name;
     d.appendChild(n);
 
-    d.addEventListener('click', () => {
+    d.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       selectStation(c.name);
       if (window.innerWidth <= 768) closeDrawer();
     });
@@ -522,7 +539,6 @@ async function boot() {
   const W = bg.naturalWidth;
   const H = bg.naturalHeight;
 
-  // 初始缩放：整图能塞进可视区
   function fitToScreen() {
     const sw = stage.clientWidth;
     const sh = stage.clientHeight;
@@ -545,7 +561,7 @@ async function boot() {
   fitToScreen();
   applyZoom();
 
-  // 滚轮缩放（直接滚，不用按 Ctrl）
+  // 滚轮缩放
   stage.addEventListener('wheel', e => {
     e.preventDefault();
     const rect = stage.getBoundingClientRect();
@@ -562,7 +578,6 @@ async function boot() {
   // 鼠标拖动平移
   let dragging = false, startX = 0, startY = 0, startScrollL = 0, startScrollT = 0;
   stage.addEventListener('mousedown', e => {
-    // 点在站点上不触发（因为站点有自己的 click）
     if (e.target.closest('.station')) return;
     dragging = true;
     startX = e.clientX; startY = e.clientY;
@@ -580,12 +595,12 @@ async function boot() {
   });
 
   // ===== 手机触摸：单指拖动 / 双指捏合 =====
-  let touchMode = null;           // 'pan' 或 'pinch'
+  let touchMode = null;
   let panStartX = 0, panStartY = 0;
   let panStartScrollL = 0, panStartScrollT = 0;
   let pinchStartDist = 0, pinchStartZoom = 0;
   let pinchCenterX = 0, pinchCenterY = 0;
-  let moved = false;              // 用来区分"点击站点"还是"拖动"
+  let moved = false;
 
   function touchDist(t1, t2) {
     const dx = t1.clientX - t2.clientX;
@@ -594,10 +609,7 @@ async function boot() {
   }
 
   stage.addEventListener('touchstart', e => {
-    if (e.target.closest('.station')) {
-      // 点在站点上：交给 click，不启动拖动
-      return;
-    }
+    // 记录起点，无论是站点还是空白，都记录；站点是否触发 click 由 moved 决定
     moved = false;
     if (e.touches.length === 1) {
       touchMode = 'pan';
@@ -618,15 +630,17 @@ async function boot() {
   }, { passive: false });
 
   stage.addEventListener('touchmove', e => {
-    if (e.target.closest('.station')) return;
-    e.preventDefault();   // 阻止浏览器页面滚动/缩放
+    e.preventDefault();
     moved = true;
 
     if (touchMode === 'pan' && e.touches.length === 1) {
       const dx = e.touches[0].clientX - panStartX;
       const dy = e.touches[0].clientY - panStartY;
-      stage.scrollLeft = panStartScrollL - dx;
-      stage.scrollTop  = panStartScrollT - dy;
+      // 只有移动超过阈值才算拖动，避免轻微抖动阻止点击
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        stage.scrollLeft = panStartScrollL - dx;
+        stage.scrollTop  = panStartScrollT - dy;
+      }
     } else if (touchMode === 'pinch' && e.touches.length === 2) {
       const d = touchDist(e.touches[0], e.touches[1]);
       const oldZoom = zoom;
@@ -634,7 +648,6 @@ async function boot() {
       const k = zoom / oldZoom;
       const rect = stage.getBoundingClientRect();
       applyZoom();
-      stage.scrollLeft = pinchCenterX * k - (pinchCenterX - stage.scrollLeft) * 1 - (stage.clientWidth  - stage.clientWidth);  // 保持中心不动
       stage.scrollLeft = pinchCenterX * k - (rect.width / 2);
       stage.scrollTop  = pinchCenterY * k - (rect.height / 2);
     }
@@ -643,13 +656,12 @@ async function boot() {
   stage.addEventListener('touchend', e => {
     if (e.touches.length === 0) {
       touchMode = null;
-      // 如果拖动过，就阻止接下来的 click（避免"拖完松手误点站点"）
+      // 如果发生过明显拖动，阻止本次 click（避免拖完松手误点站点）
       if (moved) {
         const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
         stage.addEventListener('click', block, { capture: true, once: true });
       }
     } else if (e.touches.length === 1) {
-      // 两指变一指，切换回拖动
       touchMode = 'pan';
       panStartX = e.touches[0].clientX;
       panStartY = e.touches[0].clientY;
@@ -673,7 +685,6 @@ async function boot() {
     return FARE_LEVELS[FARE_LEVELS.length - 1];
   }
 
-  // 渲染图例
   const colorToggle = document.getElementById('colorToggle');
   const fareLegend  = document.getElementById('fareLegend');
   const fareLegendItems = document.getElementById('fareLegendItems');
@@ -719,17 +730,14 @@ async function boot() {
     }
     dotEls[name].price.textContent = '起';
 
-    // 遍历所有站，填票价
     const useColor = document.getElementById('colorToggle').checked;
     stations.forEach((toName, toIdx) => {
       if (toName === name) return;
       const f = fares[fromIdx * N + toIdx];
-      if (f === 255) return;   // 无数据
+      if (f === 255) return;
       const { el, price } = dotEls[toName];
 
-      // 先清掉旧的分色类
       el.classList.remove('fare-1','fare-2','fare-3','fare-4','fare-5','fare-6','fare-7');
-
       el.classList.add('has-fare');
       if (useColor) {
         el.classList.add(fareLevel(f).cls);
@@ -737,13 +745,11 @@ async function boot() {
       price.textContent = f;
     });
 
-    // 面板更新
     document.getElementById('fromInfo').style.display = 'block';
     document.getElementById('fromName').textContent = name;
     document.getElementById('searchBox').value = '';
     hideSearch();
 
-    // 把起点滚到视图中央
     stage.scrollTo({
       left: dotEls[name].el.offsetLeft - stage.clientWidth / 2,
       top:  dotEls[name].el.offsetTop  - stage.clientHeight / 2,
@@ -763,7 +769,7 @@ async function boot() {
     const hits = stations.filter(s => s.includes(q)).slice(0, 30);
     if (!hits.length) { hideSearch(); return; }
     searchResult.innerHTML = '';
-        hits.forEach(s => {
+    hits.forEach(s => {
       const item = document.createElement('div');
       item.className = 'item';
       const lns = lines[s] || [];
@@ -790,10 +796,6 @@ async function boot() {
     }
     if (e.key === 'Escape') hideSearch();
   });
-
-  // ===== 初始：自动选第一个站，让用户看到效果 =====
-  // （不自动选也行，把下面两行注释掉）
-  // if (stations.length) selectStation(stations[0]);
 
   // ===== 手机底部抽屉 =====
   const panelEl      = document.getElementById('panel');
