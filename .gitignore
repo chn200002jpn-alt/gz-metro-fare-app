@@ -1,0 +1,29 @@
+# 依赖
+node_modules/
+
+# Android 编译产物
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 备份、临时、参考文件
+_backup_*/
+coords_fixed.json
+marker.html
+deepseek_text_*.txt
+*.log
+
+# 根目录的旧副本（www 里才是打包用的）
+/coords.json
+/index.html
+/station_lines2.json
+/stations.json
+/fares.bin
+/map.jpg
+/map.png

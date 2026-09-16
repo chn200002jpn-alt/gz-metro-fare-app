@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>广州地铁票价查询</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,sans-serif; display:flex; height:100vh; overflow:hidden; background:#f5f6f8; }
+
+  #stage {
+    flex:1; position:relative; overflow:auto;
+    background:#eef0f3;
+    cursor:default;
+    touch-action: none;
+  }
+  #canvas { position:relative; }
+   #bg { display:block; user-select:none; -webkit-user-drag:none; opacity:0.6; }
+
+  .station {
+    position:absolute; width:70px; height:50px; margin:-25px 0 0 -35px;
+    border-radius:999px; background:#fff; border:1.5px solid #9aa0a6;
+    cursor:pointer; transition:transform .08s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .station:hover { transform:scale(1.5); z-index:100; border-color:#1a73e8; }
+  .station.selected { background:#d93025; border-color:#d93025; z-index:99; }
+
+  /* 有票价时，圆里显示数字 */
+  .station.has-fare {
+    width:70px; height:50px; margin:-25px 0 0 -35px;
+    background:#1a73e8; border-color:#1a73e8;
+  }
+  .station .price {
+    font-size:40px; color:#fff; font-weight:bold; line-height:1;
+    pointer-events:none; display:none;
+    text-shadow:0 0 2px rgba(0,0,0,.3);
+  }
+  .station.has-fare .price { display:block; }
+  .station.selected .price { display:block; color:#fff; }
+
+ .station .name { display:none; }
+
+  /* 右侧信息面板 */
+  #panel {
+    width:280px; background:#fff; border-left:1px solid #d0d4da;
+    padding:16px; overflow-y:auto;
+  }
+  #panel h2 { margin:0 0 4px; font-size:16px; }
+  #panel .sub { font-size:12px; color:#888; margin-bottom:16px; }
+  #panel .from-info {
+    background:#eaf2fd; border:1px solid #a8c7fa; border-radius:6px;
+    padding:10px 12px; margin-bottom:16px;
+  }
+  #panel .from-info .label { font-size:11px; color:#666; }
+  #panel .from-info .value { font-size:20px; font-weight:bold; color:#1a73e8; margin-top:2px; }
+  #panel .hint { font-size:12px; color:#888; line-height:1.6; }
+  #panel .legend {
+    display:flex; align-items:center; gap:6px; font-size:12px; color:#555;
+    margin-top:8px;
+  }
+  #panel .legend .dot {
+    width:14px; height:14px; border-radius:50%; background:#1a73e8;
+  }
+  #panel .legend .dot.sel { background:#d93025; }
+
+  #searchBox {
+    width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:4px;
+    font-size:13px; margin-bottom:10px;
+  }
+  #searchBox:focus { outline:2px solid #a8c7fa; border-color:#1a73e8; }
+  #searchResult {
+    border:1px solid #e0e3e8; border-radius:4px; max-height:200px;
+    overflow-y:auto; font-size:13px; display:none;
+  }
+  #searchResult .item { padding:6px 10px; cursor:pointer; }
+  #searchResult .item:hover { background:#f0f7ff; }
+
+  /* 票价分色（7 档） */
+  .station.fare-1 { background:#00A6D6; border-color:#00A6D6; }
+  .station.fare-2 { background:#3B6FD9; border-color:#3B6FD9; }
+  .station.fare-3 { background:#7B52C7; border-color:#7B52C7; }
+  .station.fare-4 { background:#C0348C; border-color:#C0348C; }
+  .station.fare-5 { background:#E56B1E; border-color:#E56B1E; }
+  .station.fare-6 { background:#E03030; border-color:#E03030; }
+  .station.fare-7 { background:#8B0000; border-color:#8B0000; }
+  /* 起点改用金色 */
+  .station.selected { background:#F2C230 !important; border-color:#F2C230 !important; }
+  .station.selected {
+    width:84px !important; height:60px !important;
+    margin:-30px 0 0 -42px !important;
+  }
+  .station.fare-start { background:#F2C230; border-color:#F2C230; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="canvas">
+    <img id="bg" alt="">
+  </div>
+</div>
+
+<div id="panel">
+  <h2>广州地铁票价查询</h2>
+  <div class="sub">点击图上站点，显示到全网各站票价</div>
+
+<button id="openPicker" style="
+    width:100%; padding:12px; border:0; border-radius:6px;
+    background:#d93025; color:#fff; font-size:15px; cursor:pointer;
+    margin-bottom:12px; font-weight:bold;
+  ">选择线路 / 站点</button>
+
+  <div id="fromInfo" class="from-info" style="display:none;">
+    <div class="label">当前起点</div>
+    <div class="value" id="fromName"></div>
+  </div>
+
+  <label style="display:flex; align-items:center; gap:6px; margin-bottom:12px; font-size:13px; color:#333; cursor:pointer; user-select:none;">
+    <input type="checkbox" id="colorToggle" style="width:16px; height:16px; cursor:pointer;">
+    票价分色显示
+  </label>
+
+  <div id="fareLegend" style="display:none; margin-bottom:14px; font-size:12px; color:#555; line-height:2;">
+    <div style="font-weight:600; margin-bottom:4px; color:#333;">票价分色图例</div>
+    <div id="fareLegendItems"></div>
+  </div>
+
+  <input type="text" id="searchBox" placeholder="或输入站名搜索…" autocomplete="off">
+  <div id="searchResult"></div>
+
+  <div class="hint" id="hint">
+    尚未选择起点。<br>
+    点击图上任意站点，或从上方搜索框选站。
+  </div>
+
+  <div class="legend">
+    <div class="dot"></div> 有票价的站点
+  </div>
+  <div class="legend">
+    <div class="dot sel"></div> 当前起点
+  </div>
+</div>
+
+
+<!-- 线路选择大面板 -->
+<div id="picker" style="
+  position:fixed; inset:0; background:#f5f6f8; z-index:2000;
+  display:none; flex-direction:column;
+">
+  <!-- 顶部栏 -->
+  <div style="
+    display:flex; align-items:center; padding:12px 16px; background:#fff;
+    border-bottom:1px solid #e0e3e8; gap:12px;
+  ">
+    <div style="font-size:16px; font-weight:bold; flex:1;">请选择线路</div>
+    <button id="pickerClose" style="
+      border:0; background:transparent; font-size:24px; cursor:pointer;
+      color:#888; line-height:1;
+    ">×</button>
+  </div>
+
+  <!-- 搜索 -->
+  <div style="padding:12px 16px; background:#fff; border-bottom:1px solid #e0e3e8;">
+    <input id="pickerSearch" type="text" placeholder="请输入站点名称"
+      style="
+        width:100%; padding:10px 14px; border:1px solid #e0e3e8; border-radius:6px;
+        font-size:14px; outline:none; background:#f5f6f8;
+      ">
+  </div>
+
+  <!-- 双栏主体 -->
+  <div style="flex:1; display:flex; overflow:hidden;">
+    <!-- 左栏：线路 -->
+    <div id="lineCol" style="
+      width:180px; background:#f5f6f8; overflow-y:auto;
+      border-right:1px solid #e0e3e8;
+    "></div>
+    <!-- 右栏：站点 -->
+    <div id="stationCol" style="
+      flex:1; background:#fff; overflow-y:auto;
+    "></div>
+  </div>
+</div>
+
+<script>
+async function boot() {
+  // ===== 载入数据 =====
+  const [stations, lines, coords] = await Promise.all([
+    fetch('stations.json').then(r => r.json()),
+    fetch('station_lines2.json').then(r => r.json()),
+    fetch('coords.json').then(r => r.json()),
+  ]);
+  const N = stations.length;
+  const fares = new Uint8Array(await (await fetch('fares.bin')).arrayBuffer());
+
+  if (fares.length !== N * N) {
+    alert(`fares.bin 大小不对！\n期望 ${N*N}，实际 ${fares.length}\n可能数据版本不匹配。`);
+  }
+
+  const idxOf = {};
+  stations.forEach((n, i) => idxOf[n] = i);
+
+  // coords.json 是数组，转成 {name: {x,y}}
+  const coordOf = {};
+coords.forEach(c => { coordOf[c.name] = c; });
+  // ============ 线路选择大面板 ============
+  const picker       = document.getElementById('picker');
+  const pickerClose  = document.getElementById('pickerClose');
+  const pickerSearch = document.getElementById('pickerSearch');
+  const lineCol      = document.getElementById('lineCol');
+  const stationCol   = document.getElementById('stationCol');
+
+  // 从 stations 顺序 + lines 映射，推出 {线路: [站...]} 保持原 Excel 顺序
+    const lineToStations = {};
+  const lineOrder = [];
+  stations.forEach(s => {
+    const lns = lines[s];
+    const arr = Array.isArray(lns) ? lns : (lns ? [lns] : ['未知线路']);
+    arr.forEach(ln => {
+      if (!lineToStations[ln]) {
+        lineToStations[ln] = [];
+        lineOrder.push(ln);
+      }
+      lineToStations[ln].push(s);
+    });
+  });
+
+   // 线路显示顺序（左栏从上到下）
+  const LINE_ORDER_PREFERRED = [
+    '一号线', '二号线', '三号线', '四号线', '五号线',
+    '六号线', '七号线', '八号线', '九号线', '十号线',
+    '十一号线', '十二号线', '十三号线', '十四号线','知识城线',
+    '十八号线', '二十一号线', '二十二号线',
+    '广佛线', 'APM',  '南海有轨一号线',
+    '佛山地铁二号线', '佛山地铁三号线',
+    '海珠有轨',
+  ];
+  const orderMap = {};
+  LINE_ORDER_PREFERRED.forEach((ln, i) => orderMap[ln] = i);
+  lineOrder.sort((a, b) => (orderMap[a] ?? 9999) - (orderMap[b] ?? 9999));
+
+  // 每条线的站点顺序（人工指定）
+  const LINE_STATIONS_ORDER = {
+    '一号线': ['西塱','坑口','花地湾','芳村','黄沙','长寿路','陈家祠','西门口','公园前','农讲所','烈士陵园','东山口','杨箕','体育西路','体育中心','广州东站'],
+    '二号线': ['广州南站','石壁','会江','南浦','洛溪','南洲','东晓南','江泰路','昌岗','江南西','市二宫','海珠广场','公园前','纪念堂','越秀公园','广州火车站','三元里','飞翔公园','白云公园','白云文化广场','萧岗','江夏','黄边','嘉禾望岗'],
+    '三号线': ['海傍','海涌路','石碁南','傍江','番禺广场','市桥','汉溪长隆','大石','厦滘','沥滘','大塘','客村','广州塔','珠江新城','体育西路','石牌桥','岗顶','华师','五山','天河客运站','林和西','广州东站','燕塘','梅花园','京溪南方医院','同和','永泰','白云大道北','嘉禾望岗','龙归','人和','高增','机场北'],
+    '四号线': ['南沙客运港','南横','塘坑','大涌','广隆','飞沙角','金洲','蕉门','黄阁','黄阁汽车城','庆盛','东涌','低涌','海傍','石碁','新造','大学城南','大学城北','官洲','万胜围','车陂南','车陂','黄村'],
+    '五号线': ['滘口','坦尾','中山八','西场','西村','广州火车站','小北','淘金','区庄','动物园','杨箕','五羊邨','珠江新城','猎德','潭村','员村','科韵路','车陂南','东圃','三溪','鱼珠','大沙地','大沙东','文冲','双沙','庙头','夏园','保盈大道','夏港','黄埔新港'],
+    '六号线': ['浔峰岗','横沙','沙贝','河沙','坦尾','如意坊','黄沙','文化公园','一德路','海珠广场','北京路','团一大广场','东湖','东山口','区庄','黄花岗','沙河顶','沙河','天平架','燕塘','天河客运站','长湴','植物园','龙洞','柯木塱','高塘石','黄陂','金峰','暹岗','苏元','萝岗','香雪'],
+    '七号线': ['美的大道','北滘公园','美的','南涌','锦龙','陈村','陈村北','大洲','广州南站','石壁','谢村','钟村','汉溪长隆','南村万博','员岗','板桥','大学城南','深井','长洲','洪圣沙','裕丰围','大沙东','姬堂','加庄','科丰路','萝岗','水西','燕山'],
+    '八号线': ['滘心','亭岗','石井','小坪','石潭','聚龙','上步','同德','鹅掌坦','西村','彩虹桥','陈家祠','华林寺','文化公园','同福西','凤凰新村','沙园','宝岗大道','昌岗','晓港','中大','鹭江','客村','赤岗','磨碟沙','新港东','琶洲','万胜围'],
+    '九号线': ['飞鹅岭','花都汽车城','广州北站','花城路','花果山公园','花都广场','马鞍山公园','莲塘','清㘵','清塘','高增'],
+    '十号线': ['西塱','花围','东沙','大干围','工业大道南','东晓南','五凤','中大南门','滨江东路','东湖','五羊邨','杨箕东'],
+    '十一号线': ['赤沙','琶洲','员村','天河公园','华景路','华师','龙口西','广州东站','沙河','云台花园','大金钟路','中医药大学','梓元岗','流花','彩虹桥','中山八','如意坊','石围塘','芳村','大冲口','沙涌','鹤洞东','棣园','燕岗','江泰路','五凤','逸景路','上涌','大塘','龙潭'],
+    '十二号线': ['浔峰岗','浔峰岗北','西洲','聚龙','广州白云站','棠涌','新市墟','白云文化广场','广州体育馆','二沙岛','赤岗塔','赤岗','赤沙北','赤沙','北山','官洲','大学城北','大学城南'],
+    '十三号线': ['天河公园','棠下','车陂','天河珠村','鱼珠','裕丰围','双岗','南海神庙','夏园','南岗','沙村','白江','新塘','官湖','新沙'],
+    '十四号线': ['乐嘉路','云霄路','新市墟','马务','鹤边','鹤龙','彭边','嘉禾望岗','白云东平','夏良','太和','竹料','钟落潭','马沥','新和','红卫','新南','枫下','知识城','何棠下','旺村','汤村','镇龙北','镇龙','太平','神岗','赤草','从化客运站','东风'],
+    '十八号线': ['冼村','磨碟沙','龙潭','沙溪','南村万博','番禺广场','横沥','万顷沙'],
+    '二十一号线': ['天河公园','棠东','黄村','大观南路','天河智慧城','神舟路','科学城','苏元','水西','长平','金坑','镇龙西','镇龙','中新','坑贝','凤岗','朱村','山田','钟岗','增城广场'],
+    '二十二号线': ['芳村','西塱','南漖','南浦西','陈头岗','广州南站','市广路','番禺广场'],
+    '广佛线': ['新城东','东平','世纪莲','澜石','魁奇路','季华园','同济路','祖庙','普君北路','朝安','桂城','南桂路','𧒽岗','千灯湖','金融高新区','龙溪','菊树','西塱','鹤洞','沙涌','沙园','燕岗','石溪','南洲','沥滘'],
+    '南海有轨电车一号线': ['𧒽岗','华翠路','夏西','夏东','康怡公园','平西','平南','玉器街','中区','三山新城北','文翰湖公园（季华实验室）','三山新城南','林岳北','林岳西','林岳东'],
+    '佛山地铁二号线': ['南庄','湖涌','绿岛湖','智慧新城','张槎','石湾','沙岗','魁奇路','石梁','湾华','登洲','花卉世界','仙涌','石洲','林岳西','林岳东','广州南站'],
+    '佛山地铁三号线': ['顺德学院站','顺德欢乐海岸','顺德一中','驹荣北路','东乐路','大良钟楼','环市北','顺德人民医院','荔村','伦教','广教','北滘公园','高村','北滘西站','潭洲会展','岳步','大墩','东平','湾华','亚艺公园','季华六路','镇安','桂城','西约','叠滘','中山公园','敦厚','佛山站','联和','孝德东','罗村','佛山西站','兴业东路','科盛路','博爱中路','南海大学城','佛山大学'],
+    'APM': ['广州塔','海心沙','大剧院','花城大道','妇儿中心','黄埔大道','天河南','体育中心南','林和西'],
+    '海珠有轨': ['广州塔','猎德大桥南','琶醍','南风','会展中','会展东','琶洲大桥南','琶洲塔','万胜围'],
+    '知识城线': ['新和','红卫','新南','枫下','知识城','何棠下','旺村','汤村','镇龙北','镇龙'],
+  };
+  Object.keys(LINE_STATIONS_ORDER).forEach(ln => {
+    const want = LINE_STATIONS_ORDER[ln];
+    const have = lineToStations[ln] || [];
+    const haveSet = new Set(have);
+    const newList = want.filter(s => haveSet.has(s));   // 只保留实际存在的
+    have.forEach(s => {                                  // 补上没列的
+      if (!newList.includes(s)) newList.push(s);
+    });
+    lineToStations[ln] = newList;
+  });
+
+  // 线路配色（取常见线路的主色，简单映射）
+  const LINE_COLORS = {
+    '一号线': '#edcf3b', '二号线': '#00679e', '三号线': '#e89e47',
+    '四号线': '#01824a', '五号线': '#c70541', '六号线': '#6e0346',
+    '七号线': '#9dd32d', '八号线': '#00858a', '九号线': '#5ec998',
+    '十号线': '#6e90b6', '十一号线': '#F5BB17', '十二号线': '#59621d',
+    '十三号线': '#888600', '十四号线': '#792720', '十八号线': '#364c9c',
+    '二十一号线': '#230b55', '二十二号线': '#d14d23',
+    '广佛线': '#bbd80a', 'APM': '#00bde2', '海珠有轨': '#5eb630',
+    '知识城线': '#792720', '南海有轨电车一号线': '#61b3e3',
+    '佛山地铁二号线': '#eb0000', '佛山地铁三号线': '#004db3',
+  };
+  function lineColor(ln) { return LINE_COLORS[ln] || '#666'; }
+
+  let currentLine = null;
+
+  function renderLineCol() {
+    lineCol.innerHTML = '';
+    lineOrder.forEach(ln => {
+      const sts = lineToStations[ln];
+      const item = document.createElement('div');
+      item.style.cssText = `
+        padding:10px 12px; cursor:pointer; border-bottom:1px solid #e8eaed;
+        background:${ln === currentLine ? '#fff' : 'transparent'};
+        border-left:${ln === currentLine ? '4px solid ' + lineColor(ln) : '4px solid transparent'};
+      `;
+      item.innerHTML = `
+        <div style="
+          display:inline-block; padding:2px 8px; border-radius:3px;
+          background:${lineColor(ln)}; color:#fff; font-size:12px;
+          margin-bottom:4px;
+        ">${ln}</div>
+        <div style="font-size:11px; color:#666; line-height:1.4;">
+          ${sts[0]} - ${sts[sts.length - 1]}
+        </div>
+      `;
+      item.onclick = () => {
+        currentLine = ln;
+        renderLineCol();
+        renderStationCol();
+      };
+      lineCol.appendChild(item);
+    });
+  }
+
+  function renderStationCol(filter = '') {
+    stationCol.innerHTML = '';
+    if (!currentLine) {
+      stationCol.innerHTML = '<div style="padding:20px; color:#999; text-align:center;">请选择左侧线路</div>';
+      return;
+    }
+    const sts = lineToStations[currentLine].filter(s =>
+      !filter || s.includes(filter)
+    );
+    sts.forEach((s, i) => {
+      const item = document.createElement('div');
+      item.style.cssText = `
+        padding:14px 20px; cursor:pointer; font-size:15px;
+        border-bottom:1px solid #f0f0f0; display:flex; align-items:center;
+        justify-content:space-between;
+      `;
+      item.onmouseenter = () => item.style.background = '#f5f7fa';
+      item.onmouseleave = () => item.style.background = '';
+      item.innerHTML = `
+        <span>${s}</span>
+        <span style="
+          display:inline-block; width:12px; height:12px;
+          border-radius:50%; border:2px solid ${lineColor(currentLine)};
+          background:${(i === 0 || i === sts.length - 1) ? lineColor(currentLine) : '#fff'};
+        "></span>
+      `;
+      item.onclick = () => {
+        // 选中该站：关闭面板，跳过去
+        selectStation(s);
+        closePicker();
+      };
+      stationCol.appendChild(item);
+    });
+  }
+
+  function openPicker() {
+    picker.style.display = 'flex';
+    pickerSearch.value = '';
+    // 默认选中当前起点所在线路，或第一条
+        if (selected && lines[selected] && lines[selected].length) {
+      currentLine = lines[selected][0];
+    } else if (!currentLine) {
+      currentLine = lineOrder[0];
+    }
+    renderLineCol();
+    renderStationCol();
+  }
+  function closePicker() {
+    picker.style.display = 'none';
+  }
+
+  pickerClose.onclick = closePicker;
+  document.getElementById('openPicker').onclick = openPicker;
+
+  // 搜索：输入时右侧显示匹配站（跨线路）
+  pickerSearch.addEventListener('input', () => {
+    const q = pickerSearch.value.trim();
+    if (!q) {
+      renderStationCol();
+      return;
+    }
+    // 全局搜索
+    stationCol.innerHTML = '';
+    const hits = stations.filter(s => s.includes(q)).slice(0, 50);
+    if (!hits.length) {
+      stationCol.innerHTML = '<div style="padding:20px; color:#999; text-align:center;">无匹配站点</div>';
+      return;
+    }
+    hits.forEach(s => {
+      const item = document.createElement('div');
+      item.style.cssText = `
+        padding:14px 20px; cursor:pointer; font-size:15px;
+        border-bottom:1px solid #f0f0f0;
+      `;
+      item.onmouseenter = () => item.style.background = '#f5f7fa';
+      item.onmouseleave = () => item.style.background = '';
+      const lns = lines[s] || [];
+      const lineText = Array.isArray(lns) ? lns.join(' / ') : lns;
+      item.innerHTML = `
+        <span>${s}</span>
+        <span style="font-size:11px; color:#999; margin-left:8px;">${lineText}</span>
+      `;
+      item.onclick = () => {
+        selectStation(s);
+        closePicker();
+      };
+      stationCol.appendChild(item);
+    });
+  });
+
+  // Esc 关闭
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && picker.style.display === 'flex') closePicker();
+  });
+  
+
+  // ===== 底图 =====
+  const bg = document.getElementById('bg');
+  const canvas = document.getElementById('canvas');
+  const stage = document.getElementById('stage');
+
+  await new Promise(resolve => {
+    bg.onload = resolve;
+    bg.onerror = () => {
+      alert('底图 map.png 加载失败，请确认它在同一文件夹且文件名正确');
+      resolve();
+    };
+    bg.src = 'map.jpg';
+  });
+
+
+  // ===== 画站点 =====
+  const dotEls = {};   // name -> element
+  coords.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'station';
+    d.style.left = c.x + 'px';
+    d.style.top = c.y + 'px';
+    d.title = c.name;
+
+    const p = document.createElement('div');
+    p.className = 'price';
+    d.appendChild(p);
+
+    const n = document.createElement('div');
+    n.className = 'name';
+    n.textContent = c.name;
+    d.appendChild(n);
+
+    d.addEventListener('click', () => selectStation(c.name));
+    canvas.appendChild(d);
+    dotEls[c.name] = { el: d, price: p };
+  });
+
+  // ===== 缩放系统 =====
+  let zoom = 1;
+  const W = bg.naturalWidth;
+  const H = bg.naturalHeight;
+
+  // 初始缩放：整图能塞进可视区
+  function fitToScreen() {
+    const sw = stage.clientWidth;
+    const sh = stage.clientHeight;
+    zoom = Math.min(sw / W, sh / H);
+  }
+  function applyZoom() {
+    bg.style.width   = (W * zoom) + 'px';
+    bg.style.height  = (H * zoom) + 'px';
+    canvas.style.width  = (W * zoom) + 'px';
+    canvas.style.height = (H * zoom) + 'px';
+    // 站点位置跟着 zoom 走
+    coords.forEach(c => {
+      const el = dotEls[c.name].el;
+      el.style.left = (c.x * zoom) + 'px';
+      el.style.top  = (c.y * zoom) + 'px';
+      el.style.transform = `scale(${zoom})`;   // 圆本身也放大
+      el.style.transformOrigin = 'center';
+    });
+  }
+
+  fitToScreen();
+  applyZoom();
+
+  // 滚轮缩放（直接滚，不用按 Ctrl）
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const mx = e.clientX - rect.left + stage.scrollLeft;
+    const my = e.clientY - rect.top  + stage.scrollTop;
+    const oldZoom = zoom;
+    zoom = Math.max(0.05, Math.min(5, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const k = zoom / oldZoom;
+    applyZoom();
+    stage.scrollLeft = mx * k - (e.clientX - rect.left);
+    stage.scrollTop  = my * k - (e.clientY - rect.top);
+  }, { passive: false });
+
+  // 鼠标拖动平移
+  let dragging = false, startX = 0, startY = 0, startScrollL = 0, startScrollT = 0;
+  stage.addEventListener('mousedown', e => {
+    // 点在站点上不触发（因为站点有自己的 click）
+    if (e.target.closest('.station')) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startScrollL = stage.scrollLeft; startScrollT = stage.scrollTop;
+    stage.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    stage.scrollLeft = startScrollL - (e.clientX - startX);
+    stage.scrollTop  = startScrollT - (e.clientY - startY);
+  });
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    stage.style.cursor = '';
+  });
+
+  // ===== 手机触摸：单指拖动 / 双指捏合 =====
+  let touchMode = null;           // 'pan' 或 'pinch'
+  let panStartX = 0, panStartY = 0;
+  let panStartScrollL = 0, panStartScrollT = 0;
+  let pinchStartDist = 0, pinchStartZoom = 0;
+  let pinchCenterX = 0, pinchCenterY = 0;
+  let moved = false;              // 用来区分"点击站点"还是"拖动"
+
+  function touchDist(t1, t2) {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  stage.addEventListener('touchstart', e => {
+    if (e.target.closest('.station')) {
+      // 点在站点上：交给 click，不启动拖动
+      return;
+    }
+    moved = false;
+    if (e.touches.length === 1) {
+      touchMode = 'pan';
+      panStartX = e.touches[0].clientX;
+      panStartY = e.touches[0].clientY;
+      panStartScrollL = stage.scrollLeft;
+      panStartScrollT = stage.scrollTop;
+    } else if (e.touches.length === 2) {
+      touchMode = 'pinch';
+      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+      pinchStartZoom = zoom;
+      const rect = stage.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      pinchCenterX = cx - rect.left + stage.scrollLeft;
+      pinchCenterY = cy - rect.top  + stage.scrollTop;
+    }
+  }, { passive: false });
+
+  stage.addEventListener('touchmove', e => {
+    if (e.target.closest('.station')) return;
+    e.preventDefault();   // 阻止浏览器页面滚动/缩放
+    moved = true;
+
+    if (touchMode === 'pan' && e.touches.length === 1) {
+      const dx = e.touches[0].clientX - panStartX;
+      const dy = e.touches[0].clientY - panStartY;
+      stage.scrollLeft = panStartScrollL - dx;
+      stage.scrollTop  = panStartScrollT - dy;
+    } else if (touchMode === 'pinch' && e.touches.length === 2) {
+      const d = touchDist(e.touches[0], e.touches[1]);
+      const oldZoom = zoom;
+      zoom = Math.max(0.05, Math.min(5, pinchStartZoom * (d / pinchStartDist)));
+      const k = zoom / oldZoom;
+      const rect = stage.getBoundingClientRect();
+      applyZoom();
+      stage.scrollLeft = pinchCenterX * k - (pinchCenterX - stage.scrollLeft) * 1 - (stage.clientWidth  - stage.clientWidth);  // 保持中心不动
+      stage.scrollLeft = pinchCenterX * k - (rect.width / 2);
+      stage.scrollTop  = pinchCenterY * k - (rect.height / 2);
+    }
+  }, { passive: false });
+
+  stage.addEventListener('touchend', e => {
+    if (e.touches.length === 0) {
+      touchMode = null;
+      // 如果拖动过，就阻止接下来的 click（避免"拖完松手误点站点"）
+      if (moved) {
+        const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
+        stage.addEventListener('click', block, { capture: true, once: true });
+      }
+    } else if (e.touches.length === 1) {
+      // 两指变一指，切换回拖动
+      touchMode = 'pan';
+      panStartX = e.touches[0].clientX;
+      panStartY = e.touches[0].clientY;
+      panStartScrollL = stage.scrollLeft;
+      panStartScrollT = stage.scrollTop;
+    }
+  }, { passive: false });
+
+  // ===== 票价分色配置 =====
+  const FARE_LEVELS = [
+    { max: 2, cls: 'fare-1', color: '#4FA8E0', label: '2' },
+    { max: 3, cls: 'fare-2', color: '#3E8FD8', label: '3' },
+    { max: 4, cls: 'fare-3', color: '#5B7AC9', label: '4' },
+    { max: 5, cls: 'fare-4', color: '#8466C4', label: '5' },
+    { max: 6, cls: 'fare-5', color: '#B85AA8', label: '6' },
+    { max: 7, cls: 'fare-6', color: '#E08040', label: '7' },
+    { max: Infinity, cls: 'fare-7', color: '#D94040', label: '8+' },
+  ];
+  function fareLevel(f) {
+    for (const lv of FARE_LEVELS) if (f <= lv.max) return lv;
+    return FARE_LEVELS[FARE_LEVELS.length - 1];
+  }
+
+  // 渲染图例
+  const colorToggle = document.getElementById('colorToggle');
+  const fareLegend  = document.getElementById('fareLegend');
+  const fareLegendItems = document.getElementById('fareLegendItems');
+  if (fareLegendItems) {
+    fareLegendItems.innerHTML = FARE_LEVELS.map(lv => `
+      <span style="display:inline-flex; align-items:center; margin-right:10px;">
+        <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:${lv.color}; margin-right:4px;"></span>
+        ¥${lv.label}
+      </span>
+    `).join('');
+  }
+  colorToggle.addEventListener('change', () => {
+    fareLegend.style.display = colorToggle.checked ? 'block' : 'none';
+    const bg = document.getElementById('bg');
+    if (colorToggle.checked) {
+      // 勾选：底图去色 + 压暗一点，让彩色圆突出
+      bg.style.filter = 'grayscale(1) brightness(0.98)';
+      bg.style.opacity = '0.5';
+    } else {
+      // 取消：恢复原样
+      bg.style.filter = '';
+      bg.style.opacity = '';
+    }
+    if (selected) selectStation(selected);
+  });
+
+  // ===== 选中站点 =====
+  let selected = null;
+  function selectStation(name) {
+    if (idxOf[name] === undefined) {
+      alert('站点 "' + name + '" 不在票价数据中');
+      return;
+    }
+
+    Object.values(dotEls).forEach(({ el }) => {
+      el.classList.remove('has-fare', 'selected', 'fare-start',
+        'fare-1','fare-2','fare-3','fare-4','fare-5','fare-6','fare-7');
+      el.querySelector('.price').textContent = '';
+    });
+
+    selected = name;
+    const fromIdx = idxOf[name];
+
+    dotEls[name].el.classList.add('selected');
+    if (document.getElementById('colorToggle').checked) {
+      dotEls[name].el.classList.add('fare-start');
+    }
+    dotEls[name].price.textContent = '起';
+
+    // 遍历所有站，填票价
+    const useColor = document.getElementById('colorToggle').checked;
+    let reachable = 0;
+    stations.forEach((toName, toIdx) => {
+      if (toName === name) return;
+      const f = fares[fromIdx * N + toIdx];
+      if (f === 255) return;   // 无数据
+      const { el, price } = dotEls[toName];
+
+      // 先清掉旧的分色类
+      el.classList.remove('fare-1','fare-2','fare-3','fare-4','fare-5','fare-6','fare-7');
+
+      el.classList.add('has-fare');
+      if (useColor) {
+        el.classList.add(fareLevel(f).cls);
+      }
+      price.textContent = f;
+      reachable++;
+    });
+
+    // 面板更新
+    document.getElementById('fromInfo').style.display = 'block';
+    document.getElementById('fromName').textContent = name;
+    document.getElementById('hint').innerHTML =
+      `从「<b>${name}</b>」出发，可达 <b>${reachable}</b> 个站点。<br>
+       蓝圆中的数字即为票价（元）。`;
+    document.getElementById('searchBox').value = '';
+    hideSearch();
+
+    // 把起点滚到视图中央
+    stage.scrollTo({
+      left: dotEls[name].el.offsetLeft - stage.clientWidth / 2,
+      top:  dotEls[name].el.offsetTop  - stage.clientHeight / 2,
+      behavior: 'smooth'
+    });
+  }
+
+  // ===== 搜索 =====
+  const searchBox = document.getElementById('searchBox');
+  const searchResult = document.getElementById('searchResult');
+
+  function hideSearch() { searchResult.style.display = 'none'; }
+
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.trim();
+    if (!q) { hideSearch(); return; }
+    const hits = stations.filter(s => s.includes(q)).slice(0, 30);
+    if (!hits.length) { hideSearch(); return; }
+    searchResult.innerHTML = '';
+        hits.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      const lns = lines[s] || [];
+      const lineText = Array.isArray(lns) ? lns.join(' / ') : lns;
+      item.textContent = s + (lineText ? '  ·  ' + lineText : '');
+      item.onclick = () => {
+        selectStation(s);
+        searchBox.value = s;
+        hideSearch();
+      };
+      searchResult.appendChild(item);
+    });
+    searchResult.style.display = 'block';
+  });
+
+  document.addEventListener('click', e => {
+    if (!searchResult.contains(e.target) && e.target !== searchBox) hideSearch();
+  });
+
+  searchBox.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const first = searchResult.querySelector('.item');
+      if (first) first.click();
+    }
+    if (e.key === 'Escape') hideSearch();
+  });
+
+  // ===== 初始：自动选第一个站，让用户看到效果 =====
+  // （不自动选也行，把下面两行注释掉）
+  // if (stations.length) selectStation(stations[0]);
+}
+
+boot().catch(err => {
+  alert('加载数据失败：' + err.message + '\n请确认 5 个文件都在同一文件夹，且用 http://localhost:8000/ 打开。');
+});
+</script>
+
+</body>
+</html>
