@@ -44,10 +44,6 @@
 
 
   /* 右侧信息面板 */
-  #panel {
-    width:280px; background:#fff; border-left:1px solid #d0d4da;
-    padding:16px; overflow-y:auto;
-  }
   #panel h2 { margin:0 0 4px; font-size:16px; }
   #panel .sub { font-size:12px; color:#888; margin-bottom:16px; }
   #panel .from-info {
@@ -98,60 +94,49 @@
     background:#F2C230 !important; border-color:#F2C230 !important;
   }
 
-  /* ===== 手机：底部上滑抽屉 ===== */
-  #drawerHandle { display:none; }
-  #drawerMask   { display:none; }
+  /* ===== 手机版底部抽屉（全局生效） ===== */
 
-  @media (max-width: 768px) {
-    /* 右下角浮动圆形按钮 */
-    #drawerHandle {
-      display:flex; flex-direction:row; align-items:center; justify-content:center;
-      position:fixed; right:16px; bottom:20px;
-      padding:8px 16px;
-      min-width:64px;
-      background:#1a73e8; color:#fff;
-      border-radius:999px;   /* 胶囊形 */
-      box-shadow:0 4px 12px rgba(0,0,0,.25);
-      z-index:700; cursor:pointer;
-      transition: transform .2s;
-      gap:6px;
-    }
-    #drawerHandle:active { transform:scale(0.92); }
-    #drawerHandle .bar { display:none; }
-    #drawerHandle .arrow {
-      font-size:16px; line-height:1; font-weight:bold;
-    }
-    #drawerHandle .text {
-      font-size:12px; line-height:1;
-    }
-    /* 面板变底部抽屉 */
-    ... （下面不动）
-
-    /* 面板变底部抽屉 */
-    #panel {
-      position:fixed; left:0; right:0; bottom:0;
-      width:100%; max-width:100%;
-      height:60vh;
-      border-left:none; border-top:1px solid #d0d4da;
-      border-radius:16px 16px 0 0;
-      transform: translateY(100%);
-      transition: transform .28s ease;
-      z-index:650;
-      box-shadow:0 -4px 20px rgba(0,0,0,.15);
-      padding-bottom:48px;   /* 给把手条留位置 */
-    }
-    #panel.open {
-      transform: translateY(0);
-    }
-
-    /* 遮罩 */
-    #drawerMask {
-      display:none;
-      position:fixed; inset:0; z-index:550;
-      background:rgba(0,0,0,.25);
-    }
-    #drawerMask.show { display:block; }
+  /* 右下角浮动胶囊按钮 */
+  #drawerHandle {
+    display:flex; flex-direction:row; align-items:center; justify-content:center;
+    position:fixed; right:16px; bottom:20px;
+    padding:8px 16px;
+    min-width:64px;
+    background:#1a73e8; color:#fff;
+    border-radius:999px;
+    box-shadow:0 4px 12px rgba(0,0,0,.25);
+    z-index:700; cursor:pointer;
+    transition: transform .2s;
+    gap:6px;
+    user-select:none;
   }
+  #drawerHandle:active { transform:scale(0.92); }
+  #drawerHandle .bar { display:none; }
+  #drawerHandle .arrow { font-size:16px; line-height:1; font-weight:bold; }
+  #drawerHandle .text  { font-size:12px; line-height:1; }
+
+  /* 右侧面板 → 底部抽屉 */
+  #panel {
+    position:fixed; left:0; right:0; bottom:0;
+    width:100%; max-width:100%;
+    height:60vh;
+    border-left:none; border-top:1px solid #d0d4da;
+    border-radius:16px 16px 0 0;
+    transform: translateY(100%);
+    transition: transform .28s ease;
+    z-index:650;
+    box-shadow:0 -4px 20px rgba(0,0,0,.15);
+    padding-bottom:48px;
+  }
+  #panel.open { transform: translateY(0); }
+
+  /* 遮罩 */
+  #drawerMask {
+    display:none;
+    position:fixed; inset:0; z-index:550;
+    background:rgba(0,0,0,.25);
+  }
+  #drawerMask.show { display:block; }
 
 </style>
 </head>
@@ -173,14 +158,14 @@
 <div id="drawerMask"></div>
 
 <div id="panel">
-  <h2>广州地铁票价查询</h2>
-  <div class="sub">点击图上站点，显示到全网各站票价</div>
+  <h2>广州地铁线网票价查询</h2>
+  <div class="sub">点击站点，显示到全网各站票价</div>
 
 <button id="openPicker" style="
     width:100%; padding:12px; border:0; border-radius:6px;
     background:#d93025; color:#fff; font-size:15px; cursor:pointer;
     margin-bottom:12px; font-weight:bold;
-  ">选择线路 / 站点</button>
+  ">选择站点</button>
 
   <div id="fromInfo" class="from-info" style="display:none;">
     <div class="label">当前起点</div>
@@ -218,6 +203,8 @@
 <div id="picker" style="
   position:fixed; inset:0; background:#f5f6f8; z-index:2000;
   display:none; flex-direction:column;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(48px + env(safe-area-inset-bottom));
 ">
   <!-- 顶部栏 -->
   <div style="
@@ -734,7 +721,6 @@ async function boot() {
 
     // 遍历所有站，填票价
     const useColor = document.getElementById('colorToggle').checked;
-    let reachable = 0;
     stations.forEach((toName, toIdx) => {
       if (toName === name) return;
       const f = fares[fromIdx * N + toIdx];
@@ -749,15 +735,11 @@ async function boot() {
         el.classList.add(fareLevel(f).cls);
       }
       price.textContent = f;
-      reachable++;
     });
 
     // 面板更新
     document.getElementById('fromInfo').style.display = 'block';
     document.getElementById('fromName').textContent = name;
-    document.getElementById('hint').innerHTML =
-      `从「<b>${name}</b>」出发，可达 <b>${reachable}</b> 个站点。<br>
-       蓝圆中的数字即为票价（元）。`;
     document.getElementById('searchBox').value = '';
     hideSearch();
 
